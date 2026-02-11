@@ -1,0 +1,7 @@
+name: mano
+config:
+  L: 10
+  ttype: asm
+  value_mod: 23
+  knowledge_augment: true
+  bos_token_id: 9999

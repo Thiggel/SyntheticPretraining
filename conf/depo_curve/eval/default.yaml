@@ -1,0 +1,5 @@
+hops: [1, 2, 3, 4, 8]
+num_examples_per_hop: 256
+batch_size: 16
+qa: true
+seed_offset: 10000

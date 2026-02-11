@@ -1,0 +1,12 @@
+defaults:
+  - dataset: depo
+  - _self_
+
+show: 3
+seed: 42
+max_tokens: 120
+text_chars: 500
+
+hydra:
+  run:
+    dir: outputs/inspect_dataset/${now:%Y-%m-%d_%H-%M-%S}

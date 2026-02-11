@@ -1,0 +1,7 @@
+name_or_path: gpt2
+vocab_size: null
+n_positions: null
+n_ctx: null
+n_embd: null
+n_layer: null
+n_head: null

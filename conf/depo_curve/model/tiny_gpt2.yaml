@@ -1,0 +1,7 @@
+name_or_path: null
+vocab_size: 10064
+n_positions: 2048
+n_ctx: 2048
+n_embd: 128
+n_layer: 2
+n_head: 4

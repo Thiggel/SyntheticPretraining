@@ -1,0 +1,10 @@
+name: brevo
+config:
+  N: 70
+  multi: false
+  qa: false
+  max_in: 4
+  bos_token_id: 9999
+  eos_token_id: 9998
+  query_token_id: 9997
+  answer_token_id: 9998

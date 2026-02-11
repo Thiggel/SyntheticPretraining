@@ -1,0 +1,16 @@
+defaults:
+  - dataset: depo1
+  - model: tiny_gpt2
+  - train: default
+  - eval: default
+  - logging: local
+  - _self_
+
+seed: 42
+output_dir: ${hydra:run.dir}
+plot_file: depo_hop_curve.png
+metrics_file: depo_hop_metrics.csv
+
+hydra:
+  run:
+    dir: outputs/depo_curve/${now:%Y-%m-%d_%H-%M-%S}

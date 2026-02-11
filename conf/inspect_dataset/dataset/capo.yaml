@@ -1,0 +1,6 @@
+name: capo
+config:
+  num_people: 50000
+  exposures: 100
+  reverse_md: false
+  order: 0

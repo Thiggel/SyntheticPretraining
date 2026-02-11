@@ -1,0 +1,5 @@
+wandb:
+  enabled: false
+  project: depo-hop-curves
+  entity: null
+  name: null

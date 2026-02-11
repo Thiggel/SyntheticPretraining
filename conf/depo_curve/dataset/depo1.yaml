@@ -1,0 +1,13 @@
+N: 225
+K: 8
+M: 10
+qa: false
+separator: false
+mini_vocab: 50
+min_tlen: 1
+max_tlen: 2
+fixed_k: null
+bos_token_id: 0
+separator_token_id: 9700
+query_token_base: 9000
+answer_token_id: 9500
