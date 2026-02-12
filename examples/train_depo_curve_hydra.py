@@ -9,22 +9,23 @@ Run:
 from __future__ import annotations
 
 import csv
+import random
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import Any, Dict, List
 
 import hydra
 import matplotlib.pyplot as plt
 import torch
 from omegaconf import DictConfig, OmegaConf
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, IterableDataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, GPT2Config, GPT2LMHeadModel
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from Depo.depo import make_depo_hf_dataset
+from Depo.depo import generate_depo_example
 
 
 def _resolve_device(device_name: str) -> torch.device:
@@ -57,6 +58,28 @@ def _make_collate(pad_token_id: int):
     return _collate
 
 
+class DepoIterableDataset(IterableDataset):
+    def __init__(
+        self,
+        *,
+        config: Dict[str, Any],
+        seed: int,
+        num_examples: int | None,
+    ) -> None:
+        self.config = dict(config)
+        self.seed = int(seed)
+        self.num_examples = num_examples
+
+    def __iter__(self):
+        rng = random.Random(self.seed)
+        remaining = self.num_examples
+        while remaining is None or remaining > 0:
+            row = generate_depo_example(rng, self.config)
+            yield row
+            if remaining is not None:
+                remaining -= 1
+
+
 def _accuracy_on_masked_tokens(
     model: torch.nn.Module,
     dataset,
@@ -81,12 +104,6 @@ def _accuracy_on_masked_tokens(
             total_count += int(mask.sum().item())
     model.train()
     return total_correct / max(total_count, 1)
-
-
-def _infinite(loader: DataLoader) -> Iterable[Dict[str, torch.Tensor]]:
-    while True:
-        for batch in loader:
-            yield batch
 
 
 def _build_model_and_tokenizer(cfg: DictConfig):
@@ -168,6 +185,23 @@ def _write_metrics_and_plot(
     return csv_path, plot_path
 
 
+def _build_eval_sets(cfg: DictConfig, depo_train_cfg: Dict[str, Any], eval_hops: List[int], step: int):
+    eval_sets = {}
+    for hop in eval_hops:
+        eval_cfg = dict(depo_train_cfg)
+        eval_cfg["fixed_k"] = hop
+        eval_cfg["qa"] = bool(cfg.eval.qa)
+        seed = int(cfg.seed) + int(cfg.eval.seed_offset) + hop
+        if bool(cfg.eval.resample_each_eval):
+            seed += step * int(cfg.eval.seed_stride)
+        eval_sets[hop] = DepoIterableDataset(
+            config=eval_cfg,
+            seed=seed,
+            num_examples=int(cfg.eval.num_examples_per_hop),
+        )
+    return eval_sets
+
+
 @hydra.main(version_base=None, config_path="../conf/depo_curve", config_name="config")
 def main(cfg: DictConfig) -> None:
     torch.manual_seed(int(cfg.seed))
@@ -198,10 +232,11 @@ def main(cfg: DictConfig) -> None:
     device = _resolve_device(str(cfg.train.device))
     model.to(device)
 
-    train_ds = make_depo_hf_dataset(
-        num_examples=int(cfg.train.num_examples),
+    train_num_examples = int(cfg.train.num_examples)
+    train_ds = DepoIterableDataset(
         config=depo_train_cfg,
         seed=int(cfg.seed),
+        num_examples=train_num_examples if train_num_examples > 0 else None,
     )
 
     eval_hops = [int(h) for h in cfg.eval.hops]
@@ -210,26 +245,19 @@ def main(cfg: DictConfig) -> None:
             raise ValueError(f"eval hop {hop} exceeds dataset K={depo_train_cfg['K']}")
 
     eval_sets = {}
-    for hop in eval_hops:
-        eval_cfg = dict(depo_train_cfg)
-        eval_cfg["fixed_k"] = hop
-        eval_cfg["qa"] = bool(cfg.eval.qa)
-        eval_sets[hop] = make_depo_hf_dataset(
-            num_examples=int(cfg.eval.num_examples_per_hop),
-            config=eval_cfg,
-            seed=int(cfg.seed) + int(cfg.eval.seed_offset) + hop,
-        )
+    if not bool(cfg.eval.resample_each_eval):
+        eval_sets = _build_eval_sets(cfg, depo_train_cfg, eval_hops, step=0)
 
     collate_fn = _make_collate(pad_token_id)
     train_loader = DataLoader(
         train_ds,
         batch_size=int(cfg.train.batch_size),
-        shuffle=True,
+        shuffle=False,
         num_workers=int(cfg.train.num_workers),
         collate_fn=collate_fn,
         drop_last=False,
     )
-    train_iter = _infinite(train_loader)
+    train_iter = iter(train_loader)
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -262,7 +290,11 @@ def main(cfg: DictConfig) -> None:
     for step in range(1, max_steps + 1):
         running_loss = 0.0
         for _ in range(grad_acc):
-            batch = next(train_iter)
+            try:
+                batch = next(train_iter)
+            except StopIteration:
+                train_iter = iter(train_loader)
+                batch = next(train_iter)
             examples_seen += int(batch["input_ids"].size(0))
             batch = {k: v.to(device) for k, v in batch.items()}
             out = model(**batch)
@@ -279,6 +311,9 @@ def main(cfg: DictConfig) -> None:
         should_eval = step == 1 or step % eval_every == 0 or step == max_steps
         if not should_eval:
             continue
+
+        if bool(cfg.eval.resample_each_eval):
+            eval_sets = _build_eval_sets(cfg, depo_train_cfg, eval_hops, step=step)
 
         for hop in eval_hops:
             acc = _accuracy_on_masked_tokens(

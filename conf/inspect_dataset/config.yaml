@@ -4,8 +4,10 @@ defaults:
 
 show: 3
 seed: 42
-max_tokens: 120
+max_tokens: -1
 text_chars: 500
+tokenizer_name_or_path: null
+colorize_loss_mask: true
 
 hydra:
   run:

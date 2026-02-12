@@ -16,12 +16,23 @@ python3 /Users/filipe/Desktop/synthetic_pretraining/examples/inspect_dataset.py 
 python3 /Users/filipe/Desktop/synthetic_pretraining/examples/inspect_dataset.py dataset=mano show=2
 python3 /Users/filipe/Desktop/synthetic_pretraining/examples/inspect_dataset.py dataset=lano show=2
 python3 /Users/filipe/Desktop/synthetic_pretraining/examples/inspect_dataset.py dataset=capo show=2
+python3 /Users/filipe/Desktop/synthetic_pretraining/examples/inspect_dataset.py dataset=depo tokenizer_name_or_path=gpt2 show=2
+python3 /Users/filipe/Desktop/synthetic_pretraining/examples/inspect_dataset.py dataset=depo dataset.config.qa=true show=2
+python3 /Users/filipe/Desktop/synthetic_pretraining/examples/inspect_dataset.py dataset=depo dataset.config.qa=true dataset.config.fixed_k=8 show=2
 ```
 
 Inspector Hydra configs live in:
 
 - `/Users/filipe/Desktop/synthetic_pretraining/conf/inspect_dataset/config.yaml`
 - `/Users/filipe/Desktop/synthetic_pretraining/conf/inspect_dataset/dataset/*.yaml`
+
+Token views are rendered token-by-token and colorized by `loss_mask`:
+
+- dim: `loss_mask=0`
+- green: `loss_mask=1`
+- default prints the full sequence (`max_tokens=-1`)
+
+Without `tokenizer_name_or_path`, inspection uses a synthetic fallback decoder (`<bos>`, `<query_k>`, `<ans>`, etc.). With a tokenizer configured, it decodes via that tokenizer.
 
 ## Programmatic usage
 
@@ -59,6 +70,13 @@ This periodically evaluates fixed-hop Depo datasets and saves:
 
 - CSV metrics (`step`, `examples_seen`, `hop`, `accuracy`)
 - a multi-line plot (one line per hop)
+
+Train/eval now both use the same Depo `IterableDataset` sampling logic.
+By default eval resamples each eval step:
+
+- `eval.resample_each_eval=true`
+
+Set `eval.resample_each_eval=false` if you want a frozen eval set.
 
 Hydra configs live in:
 

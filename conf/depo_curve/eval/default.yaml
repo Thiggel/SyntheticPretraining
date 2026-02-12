@@ -3,3 +3,5 @@ num_examples_per_hop: 256
 batch_size: 16
 qa: true
 seed_offset: 10000
+resample_each_eval: true
+seed_stride: 1000
