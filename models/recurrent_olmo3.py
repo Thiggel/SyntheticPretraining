@@ -12,6 +12,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutpu
 from transformers.models.olmo3 import Olmo3Config, Olmo3ForCausalLM, Olmo3Model
 
 from .recurrent_mixins import ActMixin, LoopStateMixin
+from .recurrent_state_attention import RecurrentStateAttentionRouter
 
 
 @dataclass
@@ -43,6 +44,7 @@ class RecurrentOlmo3Model(LoopStateMixin, ActMixin, Olmo3Model):
         self.tbptt_steps = recurrent_cfg["tbptt_steps"]
         self.train_recursion_mode = recurrent_cfg["train_recursion_mode"]
         self.poisson_mode_offset = recurrent_cfg["poisson_mode_offset"]
+        self.loop_attention_mode = recurrent_cfg["loop_attention_mode"]
 
         act_cfg = recurrent_cfg["act"]
         self.act_enabled = act_cfg["enabled"]
@@ -50,6 +52,11 @@ class RecurrentOlmo3Model(LoopStateMixin, ActMixin, Olmo3Model):
 
         self.init_inject(config.hidden_size)
         self.init_act(config.hidden_size)
+        self.state_attention_router = RecurrentStateAttentionRouter(
+            layer_types=self.config.layer_types,
+            layer_offset=self.encoder_layers,
+            mode=self.loop_attention_mode,
+        )
 
     def _layer_groups(self) -> tuple[list[nn.Module], list[nn.Module], list[nn.Module]]:
         e0 = self.encoder_layers
@@ -176,14 +183,16 @@ class RecurrentOlmo3Model(LoopStateMixin, ActMixin, Olmo3Model):
         for step_idx in range(max(num_loops, 1)):
             if num_loops > 0:
                 loop_state = self.maybe_inject_source(source_states, loop_state)
-                loop_state = self._run_layer_group(
-                    loop_state,
-                    loop_group,
-                    layer_offset=self.encoder_layers,
+                loop_state = self.state_attention_router.run(
+                    hidden_states=loop_state,
+                    source_states=source_states,
+                    layers=loop_group,
                     causal_mask_mapping=causal_mask_mapping,
                     position_ids=position_ids,
                     cache_position=cache_position,
                     position_embeddings=position_embeddings,
+                    training=self.training,
+                    run_self_group=self._run_layer_group,
                     **flash_attn_kwargs,
                 )
             else:

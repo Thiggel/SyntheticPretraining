@@ -96,6 +96,7 @@ python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py train
 python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py model=from_pretrained model.name_or_path=gpt2
 python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py model=recurrent_olmo3
 python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py model=recurrent_olmo3 model.recurrent.inject_input_each_step=true model.recurrent.random_init_loop_state=true model.recurrent.tbptt_steps=2
+python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py model=recurrent_olmo3 model.recurrent.loop_attention_mode=cross model.recurrent.random_init_loop_state=true
 python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py model=recurrent_olmo3 model.recurrent.act.enabled=true model.recurrent.act.kl_weight=0.05
 python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py logging.wandb.enabled=true logging.wandb.project=my-project
 ```

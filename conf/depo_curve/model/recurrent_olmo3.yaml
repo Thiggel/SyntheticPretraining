@@ -28,6 +28,7 @@ recurrent:
   loop_layers: 2
   decoder_layers: 1
   inject_input_each_step: false
+  loop_attention_mode: self
   random_init_loop_state: false
   random_init_std: 0.5
   tbptt_steps: 0

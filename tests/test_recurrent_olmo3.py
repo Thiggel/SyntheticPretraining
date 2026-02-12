@@ -35,6 +35,7 @@ def _base_cfg() -> dict:
             "loop_layers": 2,
             "decoder_layers": 1,
             "inject_input_each_step": False,
+            "loop_attention_mode": "self",
             "random_init_loop_state": False,
             "random_init_std": 0.5,
             "tbptt_steps": 0,
@@ -99,3 +100,18 @@ def test_recurrent_olmo3_poisson_training_recursions() -> None:
     assert out.act_exit_probs is not None
     assert out.step_losses.shape == (2,)
     assert out.act_exit_probs.shape == (2,)
+
+
+def test_recurrent_olmo3_cross_loop_attention() -> None:
+    cfg = _base_cfg()
+    cfg["recurrent"]["loop_attention_mode"] = "cross"
+    cfg["recurrent"]["random_init_loop_state"] = True
+    cfg["recurrent"]["inject_input_each_step"] = False
+
+    model = RecurrentOlmo3ForCausalLM(cfg)
+    input_ids = torch.randint(0, 120, (2, 12), dtype=torch.long)
+    out = model(input_ids=input_ids, labels=input_ids)
+
+    assert out.logits.shape == (2, 12, 128)
+    assert out.loss is not None
+    assert torch.isfinite(out.loss)
