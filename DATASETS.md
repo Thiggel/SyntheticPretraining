@@ -68,7 +68,7 @@ This trains a tiny GPT-2 model for a few steps on Depo and reports answer-token 
 ## Depo Hop-Learning Curves (Hydra)
 
 ```bash
-python3 /Users/filipe/Desktop/synthetic_pretraining/examples/train_depo_curve_hydra.py
+python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py
 ```
 
 This periodically evaluates fixed-hop Depo datasets and saves:
@@ -92,10 +92,10 @@ Hydra configs live in:
 Example overrides:
 
 ```bash
-python3 /Users/filipe/Desktop/synthetic_pretraining/examples/train_depo_curve_hydra.py train.max_steps=400 'eval.hops=[1,2,3,4,8,16]' dataset.K=16
-python3 /Users/filipe/Desktop/synthetic_pretraining/examples/train_depo_curve_hydra.py model=from_pretrained model.name_or_path=gpt2
-python3 /Users/filipe/Desktop/synthetic_pretraining/examples/train_depo_curve_hydra.py model=recurrent_olmo3
-python3 /Users/filipe/Desktop/synthetic_pretraining/examples/train_depo_curve_hydra.py model=recurrent_olmo3 model.recurrent.inject_input_each_step=true model.recurrent.random_init_loop_state=true model.recurrent.tbptt_steps=2
-python3 /Users/filipe/Desktop/synthetic_pretraining/examples/train_depo_curve_hydra.py model=recurrent_olmo3 model.recurrent.act.enabled=true model.recurrent.act.kl_weight=0.05
-python3 /Users/filipe/Desktop/synthetic_pretraining/examples/train_depo_curve_hydra.py logging.wandb.enabled=true logging.wandb.project=my-project
+python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py train.max_steps=400 'eval.hops=[1,2,3,4,8,16]' dataset.K=16
+python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py model=from_pretrained model.name_or_path=gpt2
+python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py model=recurrent_olmo3
+python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py model=recurrent_olmo3 model.recurrent.inject_input_each_step=true model.recurrent.random_init_loop_state=true model.recurrent.tbptt_steps=2
+python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py model=recurrent_olmo3 model.recurrent.act.enabled=true model.recurrent.act.kl_weight=0.05
+python3 /Users/filipe/Desktop/synthetic_pretraining/train_evaluate_depo.py logging.wandb.enabled=true logging.wandb.project=my-project
 ```

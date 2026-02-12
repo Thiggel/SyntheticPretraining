@@ -1,4 +1,4 @@
-hops: [1, 2, 3, 4, 8]
+hops: [1, 2, 3, 4, 8, 16]
 num_examples_per_hop: 256
 batch_size: 16
 qa: true

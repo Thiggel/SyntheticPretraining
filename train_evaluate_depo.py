@@ -1,10 +1,10 @@
 """Pretrain on Depo and track per-hop evaluation curves.
 
 Run:
-  python3 examples/train_depo_curve_hydra.py
-  python3 examples/train_depo_curve_hydra.py model=from_pretrained model.name_or_path=gpt2
-  python3 examples/train_depo_curve_hydra.py model=recurrent_olmo3
-  python3 examples/train_depo_curve_hydra.py logging.wandb.enabled=true
+  python3 train_evaluate_depo.py
+  python3 train_evaluate_depo.py model=from_pretrained model.name_or_path=gpt2
+  python3 train_evaluate_depo.py model=recurrent_olmo3
+  python3 train_evaluate_depo.py logging.wandb.enabled=true
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from datasets import DepoTask, TaskIterableDataset
@@ -156,7 +156,7 @@ def _build_eval_sets(cfg: DictConfig, depo_train_cfg: dict[str, Any], eval_hops:
     return eval_sets
 
 
-@hydra.main(version_base=None, config_path="../conf/depo_curve", config_name="config")
+@hydra.main(version_base=None, config_path="conf/depo_curve", config_name="config")
 def main(cfg: DictConfig) -> None:
     torch.manual_seed(int(cfg.seed))
 
