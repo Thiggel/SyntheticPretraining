@@ -3,29 +3,29 @@
 Run:
   python3 examples/train_depo_curve_hydra.py
   python3 examples/train_depo_curve_hydra.py model=from_pretrained model.name_or_path=gpt2
+  python3 examples/train_depo_curve_hydra.py model=recurrent_olmo3
   python3 examples/train_depo_curve_hydra.py logging.wandb.enabled=true
 """
 
 from __future__ import annotations
 
 import csv
-import random
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import hydra
 import matplotlib.pyplot as plt
 import torch
 from omegaconf import DictConfig, OmegaConf
-from torch.utils.data import DataLoader, IterableDataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, GPT2Config, GPT2LMHeadModel
+from torch.utils.data import DataLoader
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from Depo.depo import generate_depo_example
+from datasets import DepoTask, TaskIterableDataset
+from models import build_model_and_tokenizer
 
 
 def _resolve_device(device_name: str) -> torch.device:
@@ -58,28 +58,6 @@ def _make_collate(pad_token_id: int):
     return _collate
 
 
-class DepoIterableDataset(IterableDataset):
-    def __init__(
-        self,
-        *,
-        config: Dict[str, Any],
-        seed: int,
-        num_examples: int | None,
-    ) -> None:
-        self.config = dict(config)
-        self.seed = int(seed)
-        self.num_examples = num_examples
-
-    def __iter__(self):
-        rng = random.Random(self.seed)
-        remaining = self.num_examples
-        while remaining is None or remaining > 0:
-            row = generate_depo_example(rng, self.config)
-            yield row
-            if remaining is not None:
-                remaining -= 1
-
-
 def _accuracy_on_masked_tokens(
     model: torch.nn.Module,
     dataset,
@@ -106,31 +84,7 @@ def _accuracy_on_masked_tokens(
     return total_correct / max(total_count, 1)
 
 
-def _build_model_and_tokenizer(cfg: DictConfig):
-    if cfg.model.name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(cfg.model.name_or_path)
-        model = AutoModelForCausalLM.from_pretrained(cfg.model.name_or_path)
-        if tokenizer.pad_token_id is None:
-            if tokenizer.eos_token is not None:
-                tokenizer.pad_token = tokenizer.eos_token
-            elif tokenizer.bos_token is not None:
-                tokenizer.pad_token = tokenizer.bos_token
-        return model, tokenizer
-
-    model = GPT2LMHeadModel(
-        GPT2Config(
-            vocab_size=int(cfg.model.vocab_size),
-            n_positions=int(cfg.model.n_positions),
-            n_ctx=int(cfg.model.n_ctx),
-            n_embd=int(cfg.model.n_embd),
-            n_layer=int(cfg.model.n_layer),
-            n_head=int(cfg.model.n_head),
-        )
-    )
-    return model, None
-
-
-def _check_vocab_size(model: torch.nn.Module, depo_cfg: Dict[str, int]) -> None:
+def _check_vocab_size(model: torch.nn.Module, depo_cfg: dict[str, int]) -> None:
     needed = max(
         int(depo_cfg["answer_token_id"]),
         int(depo_cfg["query_token_base"]) + int(depo_cfg["K"]),
@@ -147,7 +101,7 @@ def _check_vocab_size(model: torch.nn.Module, depo_cfg: Dict[str, int]) -> None:
 
 
 def _write_metrics_and_plot(
-    metrics_rows: List[Dict[str, float]],
+    metrics_rows: list[dict[str, float]],
     *,
     out_dir: Path,
     metrics_file: str,
@@ -185,7 +139,7 @@ def _write_metrics_and_plot(
     return csv_path, plot_path
 
 
-def _build_eval_sets(cfg: DictConfig, depo_train_cfg: Dict[str, Any], eval_hops: List[int], step: int):
+def _build_eval_sets(cfg: DictConfig, depo_train_cfg: dict[str, Any], eval_hops: list[int], step: int):
     eval_sets = {}
     for hop in eval_hops:
         eval_cfg = dict(depo_train_cfg)
@@ -194,8 +148,8 @@ def _build_eval_sets(cfg: DictConfig, depo_train_cfg: Dict[str, Any], eval_hops:
         seed = int(cfg.seed) + int(cfg.eval.seed_offset) + hop
         if bool(cfg.eval.resample_each_eval):
             seed += step * int(cfg.eval.seed_stride)
-        eval_sets[hop] = DepoIterableDataset(
-            config=eval_cfg,
+        eval_sets[hop] = TaskIterableDataset(
+            task=DepoTask(eval_cfg),
             seed=seed,
             num_examples=int(cfg.eval.num_examples_per_hop),
         )
@@ -206,7 +160,8 @@ def _build_eval_sets(cfg: DictConfig, depo_train_cfg: Dict[str, Any], eval_hops:
 def main(cfg: DictConfig) -> None:
     torch.manual_seed(int(cfg.seed))
 
-    model, tokenizer = _build_model_and_tokenizer(cfg)
+    model_cfg = OmegaConf.to_container(cfg.model, resolve=True)
+    model, tokenizer = build_model_and_tokenizer(model_cfg)
 
     depo_train_cfg = OmegaConf.to_container(cfg.dataset, resolve=True)
     if tokenizer is not None:
@@ -233,8 +188,9 @@ def main(cfg: DictConfig) -> None:
     model.to(device)
 
     train_num_examples = int(cfg.train.num_examples)
-    train_ds = DepoIterableDataset(
-        config=depo_train_cfg,
+    train_task = DepoTask(depo_train_cfg)
+    train_ds = TaskIterableDataset(
+        task=train_task,
         seed=int(cfg.seed),
         num_examples=train_num_examples if train_num_examples > 0 else None,
     )
@@ -277,7 +233,7 @@ def main(cfg: DictConfig) -> None:
             config=OmegaConf.to_container(cfg, resolve=True),
         )
 
-    metrics_rows: List[Dict[str, float]] = []
+    metrics_rows: list[dict[str, float]] = []
     out_dir = Path(cfg.output_dir)
     grad_acc = max(1, int(cfg.train.gradient_accumulation_steps))
     eval_every = max(1, int(cfg.train.eval_every_steps))

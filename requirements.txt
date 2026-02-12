@@ -1,0 +1,21 @@
+# Core ML
+torch
+transformers>=5.0.0
+datasets
+accelerate
+
+# Config / orchestration
+hydra-core
+omegaconf
+
+# Numerics / plotting
+numpy
+matplotlib
+tqdm
+xlsxwriter
+
+# Optional experiment logging
+wandb
+
+# Test utilities
+pytest

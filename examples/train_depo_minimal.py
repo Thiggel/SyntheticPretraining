@@ -1,4 +1,4 @@
-"""Minimal end-to-end training example on Depo using Hugging Face Transformers.
+"""Minimal end-to-end training example on Depo using iterable on-the-fly data.
 
 Run:
   python3 examples/train_depo_minimal.py
@@ -8,23 +8,22 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Dict, List
 
 import torch
 from torch.utils.data import DataLoader
-from transformers import GPT2Config, GPT2LMHeadModel, Trainer, TrainingArguments
+from transformers import GPT2Config, GPT2LMHeadModel
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from Depo.depo import make_depo_hf_dataset, validate_depo_example
+from datasets import DepoTask, TaskIterableDataset
 
 
-def _collate(batch: List[Dict[str, List[int]]]) -> Dict[str, torch.Tensor]:
+def _collate(batch: list[dict[str, list[int]]]) -> dict[str, torch.Tensor]:
     max_len = max(len(x["input_ids"]) for x in batch)
-    input_ids: List[List[int]] = []
-    labels: List[List[int]] = []
-    attention_mask: List[List[int]] = []
+    input_ids: list[list[int]] = []
+    labels: list[list[int]] = []
+    attention_mask: list[list[int]] = []
 
     for row in batch:
         ids = list(row["input_ids"])
@@ -40,9 +39,9 @@ def _collate(batch: List[Dict[str, List[int]]]) -> Dict[str, torch.Tensor]:
         "attention_mask": torch.tensor(attention_mask, dtype=torch.long),
     }
 
-def evaluate_answer_accuracy(model: GPT2LMHeadModel, dataset) -> Dict[str, float]:
+def evaluate_answer_accuracy(model: GPT2LMHeadModel, rows) -> dict[str, float]:
     model.eval()
-    loader = DataLoader(dataset, batch_size=8, shuffle=False, collate_fn=_collate)
+    loader = DataLoader(rows, batch_size=8, shuffle=False, collate_fn=_collate)
     device = next(model.parameters()).device
 
     total_loss = 0.0
@@ -89,8 +88,10 @@ def main() -> None:
     }
     eval_cfg = dict(train_cfg)
 
-    train_ds = make_depo_hf_dataset(num_examples=256, config=train_cfg, seed=123)
-    eval_ds = make_depo_hf_dataset(num_examples=64, config=eval_cfg, seed=456)
+    train_task = DepoTask(train_cfg)
+    eval_task = DepoTask(eval_cfg)
+    train_ds = TaskIterableDataset(task=train_task, seed=123, num_examples=None)
+    eval_rows = eval_task.take(seed=456, count=64)
 
     model = GPT2LMHeadModel(
         GPT2Config(
@@ -105,31 +106,27 @@ def main() -> None:
         )
     )
 
-    args = TrainingArguments(
-        output_dir=str(ROOT / "tmp_depo_train"),
-        max_steps=10,
-        per_device_train_batch_size=8,
-        learning_rate=5e-4,
-        logging_steps=5,
-        save_strategy="no",
-        report_to=[],
-        remove_unused_columns=False,
-    )
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.train()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4)
+    train_loader = DataLoader(train_ds, batch_size=8, shuffle=False, collate_fn=_collate)
+    train_iter = iter(train_loader)
 
-    trainer = Trainer(
-        model=model,
-        args=args,
-        train_dataset=train_ds,
-        data_collator=_collate,
-    )
-    trainer.train()
+    for _ in range(10):
+        batch = next(train_iter)
+        batch = {k: v.to(device) for k, v in batch.items()}
+        out = model(**batch)
+        out.loss.backward()
+        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
 
-    result = evaluate_answer_accuracy(model, eval_ds)
+    result = evaluate_answer_accuracy(model, eval_rows)
     print(f"eval_loss={result['loss']:.4f}")
     print(f"answer_token_accuracy={result['answer_token_accuracy']:.4f}")
 
-    sample = eval_ds[0]
-    is_valid = validate_depo_example(sample["input_ids"], eval_cfg)
+    sample = eval_rows[0]
+    is_valid = eval_task.validate_example(sample)
     print(f"first_eval_sample_valid={is_valid}")
 
 

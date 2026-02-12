@@ -9,12 +9,11 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Tuple
+from typing import Any
 
 import numpy as np
-
-from hf_dataset_utils import make_hf_dataset
 
 
 ###################################################################################################################
@@ -600,13 +599,13 @@ class CapoGenerator:
         self.company_city = self._load_company_city(fields_dir / "company.txt")
 
     @staticmethod
-    def _load_lines(path: Path) -> List[str]:
+    def _load_lines(path: Path) -> list[str]:
         with path.open("r", encoding="utf-8") as f:
             return [line.strip() for line in f if line.strip()]
 
     @staticmethod
-    def _load_company_city(path: Path) -> List[Tuple[str, str]]:
-        pairs: List[Tuple[str, str]] = []
+    def _load_company_city(path: Path) -> list[tuple[str, str]]:
+        pairs: list[tuple[str, str]] = []
         with path.open("r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -618,7 +617,7 @@ class CapoGenerator:
                 pairs.append((company.strip(), city.strip()))
         return pairs
 
-    def sample_person(self, rng: random.Random, person_id: int) -> Dict[str, object]:
+    def sample_person(self, rng: random.Random, person_id: int) -> dict[str, object]:
         company_name, company_city = rng.choice(self.company_city)
         return {
             "id": person_id,
@@ -635,16 +634,16 @@ class CapoGenerator:
             "company1city": company_city,
         }
 
-    def generate_bio(self, rng: random.Random, person: Dict[str, object], config: Mapping[str, Any]) -> str:
+    def generate_bio(self, rng: random.Random, person: dict[str, object], config: Mapping[str, Any]) -> str:
         return get_text_simple3(person, order=config["order"], reverse_md=config["reverse_md"])
 
     def generate_training_example(
         self,
         rng: random.Random,
-        person: Dict[str, object],
+        person: dict[str, object],
         config: Mapping[str, Any],
         exposure_idx: int,
-    ) -> Dict[str, object]:
+    ) -> dict[str, object]:
         text = self.generate_bio(rng, person, config)
         return {
             "text": text,
@@ -664,7 +663,7 @@ class CapoGenerator:
         }
 
 
-def validate_capo_example(example: Dict[str, object]) -> bool:
+def validate_capo_example(example: dict[str, object]) -> bool:
     text = str(example["text"])
     full_name = f"{example['first_name']} {example['middle_name']} {example['last_name']}"
     required = [
@@ -677,23 +676,3 @@ def validate_capo_example(example: Dict[str, object]) -> bool:
         str(example["birthyear"]),
     ]
     return all(item in text for item in required)
-
-
-def make_capo_hf_dataset(
-    num_examples: int,
-    config: Mapping[str, Any],
-    seed: int = 42,
-    base_dir: Path | None = None,
-):
-    cfg = dict(config)
-    base_dir = base_dir or Path(__file__).resolve().parent
-    generator = CapoGenerator(base_dir=base_dir)
-
-    # Re-sample people as needed to emit exactly num_examples rows.
-    def sample_fn(rng: random.Random) -> Dict[str, object]:
-        person_id = rng.randint(0, max(0, cfg["num_people"] - 1))
-        person = generator.sample_person(rng, person_id=person_id)
-        exposure_idx = rng.randint(0, max(0, cfg["exposures"] - 1))
-        return generator.generate_training_example(rng, person, cfg, exposure_idx)
-
-    return make_hf_dataset(num_examples=num_examples, seed=seed, sample_fn=sample_fn)

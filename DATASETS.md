@@ -1,4 +1,4 @@
-# Synthetic Task Generators (HF-Ready)
+# Synthetic Task Generators (Iterable)
 
 This workspace now exposes runnable, self-contained task generators for:
 
@@ -36,21 +36,26 @@ Without `tokenizer_name_or_path`, inspection uses a synthetic fallback decoder (
 
 ## Programmatic usage
 
-Each task script exposes:
+The new API lives in `/Users/filipe/Desktop/synthetic_pretraining/datasets/`:
 
-- `generate_*_example(...)`
-- `validate_*_example(...)`
-- `make_*_hf_dataset(num_examples, config, seed)`
+- `DepoTask`
+- `BrevoTask`
+- `ManoTask`
+- `LanoTask`
+- `CapoTask`
 
-All `make_*_hf_dataset(...)` functions return a Hugging Face `datasets.Dataset` (or a small list fallback only if `datasets` is unavailable).
+Each task provides:
 
-Configs are plain dictionaries now (no dataclasses). Pass config dictionaries directly from Hydra (or define them inline in Python/CLI).
+- `generate_example(rng)`
+- `validate_example(example)`
+- `iter_examples(seed, num_examples=None)`
+- `iterable(seed, num_examples=None)` (torch iterable dataset)
+- `take(seed, count)` (small in-memory sample for inspection/tests)
 
-Rows include at least:
+Rows include:
 
-- `input_ids` or `text`
-- `loss_mask`
-- `labels` (for token tasks; built with `-100` where masked)
+- `input_ids` / `loss_mask` / `labels` for token tasks
+- `text` for Capo
 
 ## Minimal training example
 
@@ -89,5 +94,8 @@ Example overrides:
 ```bash
 python3 /Users/filipe/Desktop/synthetic_pretraining/examples/train_depo_curve_hydra.py train.max_steps=400 'eval.hops=[1,2,3,4,8,16]' dataset.K=16
 python3 /Users/filipe/Desktop/synthetic_pretraining/examples/train_depo_curve_hydra.py model=from_pretrained model.name_or_path=gpt2
+python3 /Users/filipe/Desktop/synthetic_pretraining/examples/train_depo_curve_hydra.py model=recurrent_olmo3
+python3 /Users/filipe/Desktop/synthetic_pretraining/examples/train_depo_curve_hydra.py model=recurrent_olmo3 model.recurrent.inject_input_each_step=true model.recurrent.random_init_loop_state=true model.recurrent.tbptt_steps=2
+python3 /Users/filipe/Desktop/synthetic_pretraining/examples/train_depo_curve_hydra.py model=recurrent_olmo3 model.recurrent.act.enabled=true model.recurrent.act.kl_weight=0.05
 python3 /Users/filipe/Desktop/synthetic_pretraining/examples/train_depo_curve_hydra.py logging.wandb.enabled=true logging.wandb.project=my-project
 ```

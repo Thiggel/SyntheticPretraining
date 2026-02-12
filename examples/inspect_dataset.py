@@ -1,17 +1,10 @@
-"""Inspect any synthetic dataset via Hydra config.
-
-Examples:
-  python3 examples/inspect_dataset.py
-  python3 examples/inspect_dataset.py dataset=brevo show=2
-  python3 examples/inspect_dataset.py dataset=lano dataset.config.config_name=cfg3j
-"""
+"""Inspect synthetic dataset samples via Hydra config."""
 
 from __future__ import annotations
 
-import importlib.util
 import sys
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -19,30 +12,11 @@ from omegaconf import DictConfig, OmegaConf
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from datasets import create_task
+
 ANSI_RESET = "\033[0m"
 ANSI_DIM = "\033[2m"
 ANSI_GREEN = "\033[92m"
-
-
-def _load_module(path: Path, module_name: str):
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot import {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def _resolve_lano_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    cfg = dict(config)
-    if "config_path" not in cfg:
-        cfg_name = cfg["config_name"]
-        cfg_path = ROOT / "Lano-cfg" / "configs" / f"{cfg_name}.json"
-        if not cfg_path.exists():
-            raise FileNotFoundError(f"unknown CFG config: {cfg_path}")
-        cfg["config_path"] = cfg_path
-    return cfg
 
 
 def _maybe_load_tokenizer(name_or_path: str | None):
@@ -58,7 +32,7 @@ def _escape_token_text(text: str) -> str:
     return t if t else "<empty>"
 
 
-def _synthetic_decode(dataset_name: str, token_id: int, config: Dict[str, Any]) -> str:
+def _synthetic_decode(dataset_name: str, token_id: int, config: dict[str, Any]) -> str:
     if dataset_name == "depo":
         if token_id == config["bos_token_id"]:
             return "<bos>"
@@ -105,7 +79,7 @@ def _decode_token(
     *,
     dataset_name: str,
     token_id: int,
-    config: Dict[str, Any],
+    config: dict[str, Any],
     tokenizer,
 ) -> str:
     if tokenizer is not None:
@@ -126,15 +100,15 @@ def _decode_token(
 def _render_token_example(
     *,
     dataset_name: str,
-    row: Dict[str, Any],
-    config: Dict[str, Any],
+    row: dict[str, Any],
+    config: dict[str, Any],
     tokenizer,
     max_tokens: int,
     colorize_loss_mask: bool,
 ) -> str:
     input_ids = list(row["input_ids"])
     loss_mask = list(row["loss_mask"])
-    if max_tokens is None or int(max_tokens) <= 0:
+    if max_tokens <= 0:
         shown_ids = input_ids
         shown_mask = loss_mask
         clipped = False
@@ -147,15 +121,14 @@ def _render_token_example(
     for tok_id, m in zip(shown_ids, shown_mask):
         decoded = _decode_token(
             dataset_name=dataset_name,
-            token_id=tok_id,
+            token_id=int(tok_id),
             config=config,
             tokenizer=tokenizer,
         )
-        part = decoded
         if colorize_loss_mask:
             color = ANSI_GREEN if m else ANSI_DIM
-            part = f"{color}{part}{ANSI_RESET}"
-        pieces.append(part)
+            decoded = f"{color}{decoded}{ANSI_RESET}"
+        pieces.append(decoded)
 
     out = (
         f"len={len(input_ids)}\n"
@@ -167,53 +140,6 @@ def _render_token_example(
     return out
 
 
-def _get_dataset_bundle(
-    dataset_name: str,
-    config: Dict[str, Any],
-    *,
-    num_examples: int,
-    seed: int,
-) -> Tuple[Any, Any, Dict[str, Any]]:
-    if dataset_name == "depo":
-        from Depo.depo import make_depo_hf_dataset, validate_depo_example
-
-        cfg = dict(config)
-        ds = make_depo_hf_dataset(num_examples=num_examples, config=cfg, seed=seed)
-        return ds, validate_depo_example, cfg
-
-    if dataset_name == "brevo":
-        from Brevo.brevo import make_brevo_hf_dataset, validate_brevo_example
-
-        cfg = dict(config)
-        ds = make_brevo_hf_dataset(num_examples=num_examples, config=cfg, seed=seed)
-        return ds, validate_brevo_example, cfg
-
-    if dataset_name == "mano":
-        from Mano.mano import make_mano_hf_dataset, validate_mano_example
-
-        ds = make_mano_hf_dataset(num_examples=num_examples, config=config, seed=seed)
-        return ds, validate_mano_example, config
-
-    if dataset_name == "lano":
-        lano = _load_module(ROOT / "Lano-cfg" / "lano.py", "inspect_lano_mod")
-        cfg = _resolve_lano_config(config)
-        ds = lano.make_lano_hf_dataset(num_examples=num_examples, config=cfg, seed=seed)
-        return ds, lano.validate_lano_example, cfg
-
-    if dataset_name == "capo":
-        capo = _load_module(ROOT / "Capo-bioS-bioR" / "Capo-bioS-bioR.py", "inspect_capo_mod")
-        cfg = dict(config)
-        ds = capo.make_capo_hf_dataset(
-            num_examples=num_examples,
-            config=cfg,
-            seed=seed,
-            base_dir=ROOT / "Capo-bioS-bioR",
-        )
-        return ds, capo.validate_capo_example, cfg
-
-    raise ValueError(f"unsupported dataset: {dataset_name}")
-
-
 @hydra.main(version_base=None, config_path="../conf/inspect_dataset", config_name="config")
 def main(cfg: DictConfig) -> None:
     ds_cfg = OmegaConf.to_container(cfg.dataset, resolve=True)
@@ -221,25 +147,21 @@ def main(cfg: DictConfig) -> None:
     dataset_config = dict(ds_cfg["config"])
     tokenizer = _maybe_load_tokenizer(cfg.tokenizer_name_or_path)
 
-    ds, validator, resolved_config = _get_dataset_bundle(
-        dataset_name,
-        dataset_config,
-        num_examples=int(cfg.show),
-        seed=int(cfg.seed),
-    )
+    task = create_task(dataset_name, dataset_config)
+    rows = task.take(seed=int(cfg.seed), count=int(cfg.show))
+    resolved_config = dict(task.config)
 
     print(f"dataset={dataset_name}")
-    print(f"show={len(ds)}")
+    print(f"show={len(rows)}")
 
-    for i in range(len(ds)):
-        row = ds[i]
+    for i, row in enumerate(rows):
+        is_valid = bool(task.validate_example(row))
+        print(f"--- example {i} (valid={is_valid})")
         if "input_ids" in row:
-            is_valid = bool(validator(row["input_ids"], resolved_config))
-            print(f"--- example {i} (valid={is_valid})")
             print(
                 _render_token_example(
                     dataset_name=dataset_name,
-                    row=row,
+                    row=dict(row),
                     config=resolved_config,
                     tokenizer=tokenizer,
                     max_tokens=int(cfg.max_tokens),
@@ -247,9 +169,7 @@ def main(cfg: DictConfig) -> None:
                 )
             )
         else:
-            is_valid = bool(validator(row))
             text = str(row["text"])
-            print(f"--- example {i} (valid={is_valid})")
             print(f"text_len={len(text)}")
             print(text[: int(cfg.text_chars)])
 

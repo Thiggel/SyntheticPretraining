@@ -1,6 +1,6 @@
 defaults:
   - dataset: depo1
-  - model: tiny_gpt2
+  - model: recurrent_olmo3
   - train: default
   - eval: default
   - logging: local
